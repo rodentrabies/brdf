@@ -35,12 +35,24 @@ downloaded from the same place as the AllegroGraph server.
 
 
 
+## Supported graph types
+
+This tool will eventually support several types of Bitcoin data
+graphs, but currently only one is available:
+  - `chain` - a complete representation of Bitcoin time chain.
+
+Graph is the the first argument to the function `brdf:start-load`,
+described below.
+
+
+
 ## Running the loader
 
 In order to start the loader, run
 
 ``` lisp
-(brdf:start-load "http://user:password@127.0.0.1:8332"
+(brdf:start-load :chain
+                 "http://user:password@127.0.0.1:8332"
                  "http://user:password@127.0.0.1:10035/repositories/brdf"
                  :workers 4 :cleanp t)
 ```
@@ -67,7 +79,8 @@ In order to continue the load, run the same form but make sure the
 value of `cleanp` argument is `nil`:
 
 ``` lisp
-(brdf:start-load "http://user:password@127.0.0.1:8332"
+(brdf:start-load :chain
+                 "http://user:password@127.0.0.1:8332"
                  "http://user:password@127.0.0.1:10035/repositories/brdf"
                  :workers 4)
 ```
