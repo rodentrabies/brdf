@@ -40,7 +40,7 @@
            #:stop-load
            #:*status-check-period*))
 
-(in-package :bp/examples/brdf)
+(in-package :brdf)
 
 (defvar *workers* nil
   "A place to store loader processes to be able to conveniently stop

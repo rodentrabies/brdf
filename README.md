@@ -40,9 +40,9 @@ downloaded from the same place as the AllegroGraph server.
 In order to start the loader, run
 
 ``` lisp
-(bp/examples/brdf:start-load "http://user:password@127.0.0.1:8332"
-                             "http://user:password@127.0.0.1:10035/repositories/brdf"
-                             :workers 4 :cleanp t)
+(brdf:start-load "http://user:password@127.0.0.1:8332"
+                 "http://user:password@127.0.0.1:10035/repositories/brdf"
+                 :workers 4 :cleanp t)
 ```
 
 You should see a loader log that looks similar to this:
@@ -57,7 +57,7 @@ You should see a loader log that looks similar to this:
 In order to stop the loader, run
 
 ``` lisp
-(bp/examples/brdf:stop-load)
+(brdf:stop-load)
 ```
 
 Once the function call above returns, all the workers have been
@@ -67,9 +67,9 @@ In order to continue the load, run the same form but make sure the
 value of `cleanp` argument is `nil`:
 
 ``` lisp
-(bp/examples/brdf:start-load "http://user:password@127.0.0.1:8332"
-                             "http://user:password@127.0.0.1:10035/repositories/brdf"
-                             :workers 4)
+(brdf:start-load "http://user:password@127.0.0.1:8332"
+                 "http://user:password@127.0.0.1:10035/repositories/brdf"
+                 :workers 4)
 ```
 
 By default, the status of the load will be checked every 10
@@ -77,7 +77,7 @@ seconds. As the load continues, it might make sense to change the
 status check period to a larger value (e.g. 1 hour) by evaluating
 
 ``` lisp
-(setf bp/examples/brdf:*status-check-period* 3600)
+(setf brdf:*status-check-period* 3600)
 ```
 
 since it is expected to take anywhere from several days to several
