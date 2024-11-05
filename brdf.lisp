@@ -155,6 +155,48 @@
               (when output-address
                 (add-triple output-resource (%r "outputAddress") (%l output-address :string))))))))))
 
+(defmethod load-block ((graph (eql :transactions)) block-height block-hash)
+  (let* ((block (decode 'cblock (get-block block-hash :encoded t)))
+         (block-resource (%r (format nil "~a" block-height))))
+    ;; Create block resouce.
+    (add-triple block-resource +rdf-type-uri+ (%r "Block"))
+    (loop :for tx-index :below (length (block-transactions block)) :do
+      (let* ((tx (aref (block-transactions block) tx-index))
+             (tx-resource (%r (tx-id tx)))
+             (tx-input-count (length (tx-inputs tx)))
+             (tx-output-count (length (tx-outputs tx))))
+        ;; Create transaction resource.
+        (add-triple block-resource (%r "blockTx") tx-resource)
+        (add-triple tx-resource +rdf-type-uri+ (%r "Tx"))
+        (add-triple tx-resource (%r "txInputCount") (%l tx-input-count :integer))
+        (add-triple tx-resource (%r "txOutputCount") (%l tx-output-count :integer))
+        ;; Link transaction with input outpoints.
+        (loop :for input-index :below tx-input-count :do
+          (let* ((input (aref (tx-inputs tx) input-index))
+                 (input-prevout-id (txin-previous-tx-id input))
+                 (input-prevout-index (txin-previous-tx-index input)))
+            (when (not (every #'zerop input-prevout-id))
+              (let* ((input-prevout-id-hex (hex-encode (reverse input-prevout-id)))
+                     (input-previous-output (format nil "~a:~a" input-prevout-id-hex input-prevout-index)))
+                ;; (unless (get-triple :s (%r input-previous-output) :p +rdf-type-uri+ :o (%r "Output"))
+                ;;   (add-triple (%r input-previous-output) +rdf-type-uri+ (%r "Output")))
+                (add-triple (%r input-previous-output) +rdf-type-uri+ (%r "Output"))
+                (add-triple (%r input-previous-output) (%r "outputInputTx") tx-resource)))))
+        ;; Link transaction with outputs.
+        (loop :for output-index :below tx-output-count :do
+          (let* ((output (aref (tx-outputs tx) output-index))
+                 (output-amount (txout-amount output))
+                 (output-resource (%r (format nil "~a:~a" (tx-id tx) output-index))))
+            ;; Link output with the transaction.
+            (add-triple tx-resource (%r "txOutput") output-resource)
+            (add-triple output-resource +rdf-type-uri+ (%r "Output"))
+            (add-triple output-resource (%r "outputAmount") (%l output-amount :integer))
+            ;; Output type will be non-NIL only for standard scripts.
+            (multiple-value-bind (_ output-address)
+                (script-standard-p (txout-script-pubkey output) :network (network))
+              (declare (ignore _))
+              (when output-address
+                (add-triple output-resource (%r "outputAddress") (%l output-address :string))))))))))
 
 
 ;;; ----------------------------------------------------------------------------
