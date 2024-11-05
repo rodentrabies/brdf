@@ -7,20 +7,15 @@
 
 
 #-------------------------------------------------------------------------------
-# Block is a class of entities that aggregate Transactions; contains header and
-# an ordered set of transactions. There exists a mapping
-#
-#     blockPreviousBlock: Block -> Block,
-#
-# which introduces ordering of the blocks and has an inverse `blockNextBlock`.
+# Block is a class of entities that aggregate Transactions.
 
 <#Block>
         rdf:type     rdfs:Class;
-        rdfs:comment "Bitcoin block that contains a header and an ordered set of transactions".
+        rdfs:comment "Set of transactions along with additional metadata.".
 
 <#blockHeight>
         rdf:type     rdfs:Property;
-        rdfs:comment "Height of the block is an index of the block in the chain, starting from 0.";
+        rdfs:comment "Index of a block in the chain, starting from 0.";
         rdfs:domain  <#Block>;
         rdfs:range   xsd:integer.
 
@@ -36,36 +31,25 @@
         rdfs:domain  <#Block>;
         rdfs:range   xsd:integer.
 
-<#blockSize>
-        rdf:type     rdfs:Property;
-        rdfs:comment "The size of the block in bytes.";
-        rdfs:domain  <#Block>;
-        rdfs:range   xsd:integer.
+<#blockMerkleRoot>
+        rdf:type    rdfs:Property;
+        rdfs:domain <#Block>;
+        rdfs:range  xsd:string.
 
-# <#blockWeight>
-#         rdf:type    rdfs:Property;
-#         rdfs:domain <#Block>;
-#         rdfs:range  xsd:integer.
-
-# <#blockMerkleRoot>
-#         rdf:type    rdfs:Property;
-#         rdfs:domain <#Block>;
-#         rdfs:range  xsd:string.
-
-# <#blockDifficulty>
-#         rdf:type    rdfs:Property;
-#         rdfs:domain <#Block>;
-#         rdfs:range  xsd:integer.
+<#blockDifficulty>
+        rdf:type    rdfs:Property;
+        rdfs:domain <#Block>;
+        rdfs:range  xsd:integer.
 
 <#blockTime>
         rdf:type     rdfs:Property;
-        rdfs:comment "Date-time value at the moment of construction of the block.";
+        rdfs:comment "Date-time value at the moment of construction of a block.";
         rdfs:domain  <#Block>;
         rdfs:range   xsd:dateTime.
 
 <#blockTxCount>
         rdf:type     rdfs:Property;
-        rdfs:comment "Number of transactions in the block.";
+        rdfs:comment "Number of transactions in a block.";
         rdfs:domain  <#Block>;
         rdfs:range   xsd:integer.
 
@@ -77,16 +61,16 @@
 
 <#blockNextBlock>
         rdf:type      rdfs:Property;
-        rdfs:comment  "Inverse of blockPrevBlock property.";
+        rdfs:comment  "Inverse of blockPreviousBlock property.";
         rdfs:domain   <#Block>;
         rdfs:range    <#Block>;
         owl:inverseOf <#prevBlock>.
 
 <#blockTx>
         rdf:type     rdfs:Property;
-        rdfs:comment "Transaction-Block membership relation.";
+        rdfs:comment "Tx-Block membership relation.";
         rdfs:domain  <#Block>;
-        rdfs:range   <#Transaction>.
+        rdfs:range   <#Tx>.
 
 
 
@@ -106,49 +90,60 @@
 <#txID>
         rdf:type     rdfs:Property;
         rdfs:comment "Hash of the transaction which is used to uniquely identify it.";
-        rdfs:domain  <#Transaction>;
+        rdfs:domain  <#Tx>;
         rdfs:range   xsd:string.
 
 <#txVersion>
         rdf:type     rdfs:Property;
         rdfs:comment "Version of the transaction representing the set of supported features.";
-        rdfs:domain  <#Transaction>;
+        rdfs:domain  <#Tx>;
         rdfs:range   xsd:integer.
 
 <#txSize>
         rdf:type     rdfs:Property;
         rdfs:comment "Size of the transaction in bytes.";
-        rdfs:domain  <#Transaction>;
+        rdfs:domain  <#Tx>;
         rdfs:range   xsd:integer.
 
-# <#txVSize>
-#         rdf:type    rdfs:Property;
-#         rdfs:domain <#Transaction>;
-#         rdfs:range  xsd:integer.
+<#txVSize>
+        rdf:type    rdfs:Property;
+        rdfs:domain <#Tx>;
+        rdfs:range  xsd:integer.
 
-# <#txWeight>
-#         rdf:type    rdfs:Property;
-#         rdfs:domain <#Transaction>;
-#         rdfs:range  xsd:integer.
+<#txWeight>
+        rdf:type    rdfs:Property;
+        rdfs:domain <#Tx>;
+        rdfs:range  xsd:integer.
 
 <#txLockTime>
         rdf:type     rdfs:Property;
         rdfs:comment "Index of the minimum block or unixtime this transaction is allowed to be included in the block.";
-        rdfs:domain  <#Transaction>;
+        rdfs:domain  <#Tx>;
         rdfs:range   rdf:integer.
+
+<#txInputCount>
+        rdf:type     rdfs:Property;
+        rdfs:comment "Number of Inputs a transaction has.";
+        rdfs:domain  <#Tx>;
+        rdfs:range   xsd:integer.
 
 <#txInput>
         rdf:type     rdfs:Property;
-        rdfs:comment "Input-Transaction membership relation.";
-        rdfs:domain  <#Transaction>;
+        rdfs:comment "Input-Tx membership relation.";
+        rdfs:domain  <#Tx>;
         rdfs:range   <#Input>.
+
+<#txOutputCount>
+        rdf:type     rdfs:Property;
+        rdfs:comment "Number of Outputs a transaction has.";
+        rdfs:domain  <#Tx>;
+        rdfs:range   xsd:integer.
 
 <#txOutput>
         rdf:type     rdfs:Property;
-        rdfs:comment "Output-Transaction membership relation.";
-        rdfs:domain  <#Transaction>;
+        rdfs:comment "Output-Tx membership relation.";
+        rdfs:domain  <#Tx>;
         rdfs:range   <#Output>.
-
 
 #-------------------------------------------------------------------------------
 # Output represents an abstract chunk of value in the Bitcoin system
@@ -170,7 +165,7 @@
         rdfs:domain  <#Output>;
         rdfs:range   xsd:integer.
 
-<#outputScriptPubkey>
+<#outputScript>
         rdf:type     rdfs:Property;
         rdfs:comment "Script that describes an unlocking condition of the given output.";
         rdfs:domain  <#Output>;
@@ -188,6 +183,19 @@
         rdfs:domain  <#Output>;
         rdfs:range   xsd:string.
 
+<#outputInput>
+        rdf:type     rdfs:Property;
+        rdfs:comment "Output-Input relation.";
+        rdfs:domain  <#Output>;
+        rdfs:range   <#Input>.
+
+<#outputInputTx>
+        rdf:type     rdfs:Property;
+        rdfs:comment "Transaction for which an Output is an input.";
+        rdfs:domain  <#Output>;
+        rdfs:range   <#Tx>.
+
+
 
 
 #-------------------------------------------------------------------------------
@@ -203,13 +211,13 @@
         rdfs:comment "Index of the given input within its transaction.";
         rdfs:range xsd:integer.
 
-<#inputPreviousOutput>
+<#inputOutput>
         rdf:type     rdfs:Property;
         rdfs:comment "Output being spent by this input.";
         rdfs:domain  <#Input>;
         rdfs:range   <#Output>.
 
-<#inputScriptSig>
+<#inputScript>
         rdf:type     rdfs:Property;
         rdfs:comment "Script that is appended to locking script in order to unlock the locked value when spending.";
         rdfs:domain  <#Input>;
