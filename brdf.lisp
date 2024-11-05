@@ -126,9 +126,9 @@
             (add-triple tx-resource    (%r "txInput")    input-resource)
             (add-triple input-resource (%r "inputIndex") (%l input-index :integer))
             ;; Add input data.
-            (add-triple input-resource +rdf-type-uri+        (%r "Input"))
-            (add-triple input-resource (%r "inputSequence")  (%l input-sequence :integer))
-            (add-triple input-resource (%r "inputScriptSig") (%l input-script-sig :string))
+            (add-triple input-resource +rdf-type-uri+       (%r "Input"))
+            (add-triple input-resource (%r "inputSequence") (%l input-sequence :integer))
+            (add-triple input-resource (%r "inputScript")   (%l input-script-sig :string))
             ;; Link input with the output that it spends unless this is a coinbase transaction.
             (when (not (every #'zerop input-prevout-id))
               (let* ((input-prevout-id-hex (hex-encode (reverse input-prevout-id)))
@@ -144,16 +144,17 @@
             (add-triple tx-resource     (%r "txOutput")    output-resource)
             (add-triple output-resource (%r "outputIndex") (%l output-index :integer))
             ;; Add output data.
-            (add-triple output-resource +rdf-type-uri+            (%r "Output"))
-            (add-triple output-resource (%r "outputAmount")       (%l output-amount :integer))
-            (add-triple output-resource (%r "outputScriptPubkey") (%l output-script-pubkey :string))
+            (add-triple output-resource +rdf-type-uri+      (%r "Output"))
+            (add-triple output-resource (%r "outputAmount") (%l output-amount :integer))
+            (add-triple output-resource (%r "outputScript") (%l output-script-pubkey :string))
             ;; Output type will be non-NIL only for standard scripts.
             (multiple-value-bind (output-type output-address)
                 (script-standard-p output-script-pubkey :network (network))
               (when output-type
                 (add-triple output-resource (%r "outputType") (%r (format nil "~a" output-type))))
               (when output-address
-                (add-triple output-resource (%r "outputAddress") (%r output-address))))))))))
+                (add-triple output-resource (%r "outputAddress") (%l output-address :string))))))))))
+
 
 
 ;;; ----------------------------------------------------------------------------
@@ -185,12 +186,18 @@ opened as REMOTE-TRIPLE-STORE."
          ,@body))))
 
 (defun start-load (graph src dst &key workers cleanp from-height to-height)
+  (when *workers*
+    (error "Load process with ~a workers is already running." (length *workers*)))
   ;; Perform clean setup if explicitly requested or repository does not exist.
   (setf cleanp (or cleanp (not (triple-store-exists-p dst))))
+  ;; First create/open repository as remote one and make some things
+  ;; persistent.
   (with-open-remote-triple-store (db dst :if-does-not-exist :create)
-    ;; Set namespaces, both locally (in Lisp client) and persistently (on the server).
+    (define-namespace (@client db) "bp" +brdf-namespace+ :type :repository))
+  ;; Now open repository for operation.
+  (with-open-triple-store (db dst :if-does-not-exist :error)
+    ;; Set local namespace abbreviation.
     (register-namespace "bp" +brdf-namespace+)
-    (define-namespace (@client db) "bp" +brdf-namespace+ :type :repository)
     (let ((block-queue (make-instance 'mp:queue :name "BRDF block queue lock")))
       ;; Perform reinitialization if CLEANP.
       (when cleanp
@@ -251,65 +258,63 @@ opened as REMOTE-TRIPLE-STORE."
        ;; next one.
        (commit-triple-store)))
 
+(defun loaded-blocks-table ()
+  (let ((table (make-hash-table :test '=)))
+    (dolist (result (sparql:run-sparql "SELECT ?b { ?b a bp:Block }" :output-format :lists))
+      (let* ((block (part->value (first result)))
+             (height (parse-integer (subseq block (length +brdf-namespace+)))))
+        (setf (gethash height table) t)))
+    table))
+
 (defun start-planner (src dst block-queue from-height to-height workers)
   (with-open-triple-store (db dst :if-does-not-exist :error)
-    (let* ((loaded-blocks-query "SELECT DISTINCT ?h { ?b bp:blockHeight ?h } ORDER BY ?h")
-           (loaded-blocks (sparql:run-sparql loaded-blocks-query :output-format :lists))
-           (loaded-blocks-list (mapcar (lambda (r) (part->value (first r))) loaded-blocks))
-           (node-connection (make-instance 'bprpc:node-rpc-connection :url src))
+    (let* ((node-connection (make-instance 'bprpc:node-rpc-connection :url src))
            (initial-chain-stats (bprpc:getchaintxstats node-connection))
-           (highest-known-block (jsown:val initial-chain-stats "window_final_block_height")))
-      (flet ((%within-range (i)
-               (and (or (not from-height) (>= i from-height))
-                    (or (not to-height) (<= i to-height)))))
-        ;; Populate the block queue with all blocks missing from the
-        ;; contiguous sequence of loaded blocks and add all the blocks
-        ;; from the last loaded one until the last known one.
-        (loop
-          :for (b0 b1) :on loaded-blocks-list :by #'cdr
-          :do (when (and b0 b1 (/= (1+ b0) b1))
+           (highest-known-block (jsown:val initial-chain-stats "window_final_block_height"))
+           (loaded-blocks-table (loaded-blocks-table))
+           (max-height to-height)
+           (from-height (or from-height 0))
+           (to-height (or to-height highest-known-block))
+           (initially-enqueued-blocks 0))
+      ;; Populate the block queue with all blocks in the specified
+      ;; range unless they are already in the DB.
+      (loop :for i :from from-height :to to-height
+            :do (unless (gethash i loaded-blocks-table)
+                  (incf initially-enqueued-blocks)
+                  (mp:enqueue block-queue i)))
+      (format t "[~a] Initially enqueued blocks: ~a~%"
+              (excl:universal-time-to-string (get-universal-time))
+              initially-enqueued-blocks)
+      ;; Start the status check loop.
+      (handler-case
+          (loop
+            (let* ((chain-stats (bprpc:getchaintxstats node-connection))
+                   (chain-blocks (jsown:val chain-stats "window_final_block_height"))
+                   (chain-txs (jsown:val chain-stats "txcount"))
+                   (blocks (sparql:run-sparql "SELECT DISTINCT ?b { ?b a bp:Block }"
+                                              :output-format :count))
+                   (txs (sparql:run-sparql "SELECT DISTINCT ?b { ?b a bp:Tx }"
+                                           :output-format :count))
+                   (progress (/ txs chain-txs)))
+              (when (> chain-blocks highest-known-block)
                 (loop
-                  :for i :from (1+ b0) :to (1- b1)
-                  :if (%within-range i)
-                    :do (mp:enqueue block-queue i)))
-          :finally (let ((last-loaded-block (or b0 -1))) ;; -1 - no blocks at all
-                     (loop
-                       :for i :from (1+ last-loaded-block) :to highest-known-block
-                       :if (%within-range i)
-                         :do (mp:enqueue block-queue i))))
-        (format t "[~a] Initially enqueued blocks: ~a~%"
-                (excl:universal-time-to-string (get-universal-time))
-                (mp:queue-length block-queue))
-        ;; Start the status check loop.
-        (handler-case
-            (loop
-              (let* ((chain-stats (bprpc:getchaintxstats node-connection))
-                     (chain-blocks (jsown:val chain-stats "window_final_block_height"))
-                     (chain-txs (jsown:val chain-stats "txcount"))
-                     (blocks (sparql:run-sparql "SELECT DISTINCT ?b { ?b a bp:Block }"
-                                                :output-format :count))
-                     (txs (sparql:run-sparql "SELECT DISTINCT ?b { ?b a bp:Tx }"
-                                             :output-format :count))
-                     (progress (/ txs chain-txs)))
-                (when (> chain-blocks highest-known-block)
-                  (loop
-                    :for i :from (1+ highest-known-block) :to chain-blocks
-                    :if (%within-range i)
-                      :do (mp:enqueue block-queue i))
-                  (let ((new-blocks (- chain-blocks highest-known-block)))
-                    (format t "[~a] Adding ~a block~p to the queue~%"
-                            (excl:universal-time-to-string (get-universal-time))
-                            new-blocks
-                            new-blocks))
-                  (setf highest-known-block chain-blocks))
-                (when (not (%within-range highest-known-block))
-                  (loop :repeat workers :do (mp:enqueue block-queue nil)))
-                (format t "[~a] Blocks: ~a/~a, txs: ~a/~a, progress: ~5$~%"
-                        (excl:universal-time-to-string (get-universal-time))
-                        blocks chain-blocks txs chain-txs progress)
-                (sleep *status-check-period*)
-                (rollback-triple-store)))
-          (stop-worker ()))))))
+                  :for i :from (1+ highest-known-block) :to chain-blocks
+                  :if (or (null max-height) (<= i max-height))
+                    :do (mp:enqueue block-queue i))
+                (let ((new-blocks (- chain-blocks highest-known-block)))
+                  (format t "[~a] Adding ~a block~p to the queue~%"
+                          (excl:universal-time-to-string (get-universal-time))
+                          new-blocks
+                          new-blocks))
+                (setf highest-known-block chain-blocks))
+              (when (> highest-known-block to-height)
+                (loop :repeat workers :do (mp:enqueue block-queue nil)))
+              (format t "[~a] Blocks: ~a/~a, txs: ~a/~a, progress: ~5$~%"
+                      (excl:universal-time-to-string (get-universal-time))
+                      blocks chain-blocks txs chain-txs progress)
+              (sleep *status-check-period*)
+              (rollback-triple-store)))
+        (stop-worker ())))))
 
 
 ;;; ----------------------------------------------------------------------------
