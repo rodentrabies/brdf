@@ -95,3 +95,76 @@ status check period to a larger value (e.g. 1 hour) by evaluating
 
 since it is expected to take anywhere from several days to several
 weeks on an average home machine.
+
+
+## SPARQL queries
+
+### Basic statistics
+
+* Block count:
+
+``` sparql
+# Total number of block in the graph.
+
+SELECT (COUNT(?b) AS ?bcount) {
+  ?b a bp:Block.
+}
+```
+
+* Block range:
+
+``` sparql
+# Oldest and newest blocks present and the graph. Note the hacky way to
+# compute the length of the prefix to cut the block height substring.
+
+SELECT (MIN(?bheight) AS ?minblock) (MAX(?bheight) AS ?maxblock) {
+  ?b a bp:Block.
+  BIND(xsd:integer(SUBSTR(STR(?b), STRLEN(STR(bp:Tx)) - 2) AS ?bheight)
+}
+```
+
+* Transaction count:
+
+``` sparql
+# Total number of transactions in the graph.
+
+SELECT (COUNT(?t) AS ?tcount) {
+  ?t a bp:Tx.
+}
+```
+
+
+
+### Types of transactions
+
+* Consolidation transactions:
+
+``` sparql
+# Consolidation transactions are transactions that combine a bunch of outputs
+# belonging to a single entity into a small number of outputs (usually a single
+# one).
+
+SELECT ?tx ?icount ?ocount {
+  ?tx bp:txInputCount ?icount.
+  ?tx bp:txOutputCount ?ocount.
+  FILTER (?icount > 200 && ?ocount = 1)
+}
+ORDER BY ?icount
+```
+
+* Temporary address transctions:
+
+``` sparql
+# Temporary address transactions are transactions that send a bunch of outputs
+# to a single address and then sent the whole amount to another single address.
+
+SELECT ?tx1 ?tx2 ?icount1 {
+  ?tx1 bp:txInputCount ?icount1.
+  ?tx1 bp:txOutputCount ?ocount1.
+  FILTER (?icount1 > 5 && ?ocount1 = 1)
+  ?tx1 bp:txOutput/bp:outputInputTx ?tx2.
+  ?tx2 bp:txOutputCount ?ocount2.
+  FILTER (?ocount2 = 1)
+}
+ORDER BY ?icount1
+```
