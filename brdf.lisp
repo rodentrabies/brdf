@@ -227,11 +227,10 @@ opened as REMOTE-TRIPLE-STORE."
                                      ,@args)
          ,@body))))
 
-(defun start-load (graph src dst &key workers cleanp from-height to-height)
+(defun start-load (graph src dst &key workers from-height to-height)
   (when *workers*
     (error "Load process with ~a workers is already running." (length *workers*)))
   ;; Perform clean setup if explicitly requested or repository does not exist.
-  (setf cleanp (or cleanp (not (triple-store-exists-p dst))))
   ;; First create/open repository as remote one and make some things
   ;; persistent.
   (with-open-remote-triple-store (db dst :if-does-not-exist :create)
@@ -241,8 +240,10 @@ opened as REMOTE-TRIPLE-STORE."
     ;; Set local namespace abbreviation.
     (register-namespace "bp" +brdf-namespace+)
     (let ((block-queue (make-instance 'mp:queue :name "BRDF block queue lock")))
-      ;; Perform reinitialization if CLEANP.
-      (when cleanp
+      ;; Perform reinitialization *only* if no triples in the triple
+      ;; store. Shot myself in the foot too many times to expose the
+      ;; CLEAP argument.
+      (when (= (triple-count :db db) 0)
         (delete-triples :db db)
         (drop-index :gposi)
         (drop-index :gspoi)
@@ -368,7 +369,7 @@ opened as REMOTE-TRIPLE-STORE."
 (brdf:start-load :chain
                  "http://user:password@127.0.0.1:8332"
                  "http://user:password@127.0.0.1:10035/repositories/brdf"
-                 :workers 4 :cleanp t)
+                 :workers 4)
 
 #+test
 ;; In order to stop the load, do:

@@ -54,7 +54,7 @@ In order to start the loader, run
 (brdf:start-load :chain
                  "http://user:password@127.0.0.1:8332"
                  "http://user:password@127.0.0.1:10035/repositories/brdf"
-                 :workers 4 :cleanp t)
+                 :workers 4)
 ```
 
 You should see a loader log that looks similar to this:
