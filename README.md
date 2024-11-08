@@ -101,21 +101,27 @@ weeks on an average home machine.
 
 ### Basic statistics
 
+* Transaction count:
+
+``` sparql
+# Total number of transactions in the graph.
+
+SELECT (COUNT(?t) AS ?tcount) { ?t a bp:Tx }
+```
+
 * Block count:
 
 ``` sparql
 # Total number of block in the graph.
 
-SELECT (COUNT(?b) AS ?bcount) {
-  ?b a bp:Block.
-}
+SELECT (COUNT(?b) AS ?bcount) { ?b a bp:Block }
 ```
 
 * Block range:
 
 ``` sparql
-# Oldest and newest blocks present and the graph. Note the hacky way to
-# compute the length of the prefix to cut the block height substring.
+# Oldest and newest blocks present and the graph. Note the hacky way
+# to compute the length of the prefix to cut the block height substring.
 
 SELECT (MIN(?bheight) AS ?minblock) (MAX(?bheight) AS ?maxblock) {
   ?b a bp:Block.
@@ -123,17 +129,41 @@ SELECT (MIN(?bheight) AS ?minblock) (MAX(?bheight) AS ?maxblock) {
 }
 ```
 
-* Transaction count:
+
+* Block range contiguous:
 
 ``` sparql
-# Total number of transactions in the graph.
+# Check whether block range in the graph is contiguous (i.e. there are
+# no gaps).
 
-SELECT (COUNT(?t) AS ?tcount) {
-  ?t a bp:Tx.
+SELECT ?min ?max ?sum ?count ?expectedSum ?contiguous {
+  {
+    SELECT (MIN(?bheight) AS ?min) (MAX(?bheight) AS ?max) (SUM(?bheight) AS ?sum) (COUNT(?b) AS ?count)
+    {
+      ?b a bp:Block.
+      BIND(xsd:integer(SUBSTR(STR(?b), 30)) AS ?bheight)
+    }
+  }
+  BIND ((?max - ?min + 1)*(?min + ?max)/2 AS ?expectedSum)
+  BIND (?expectedSum = ?sum AS ?contiguous)
 }
 ```
 
+* Block range gaps:
 
+``` sparql
+# Return blocks that have a gap after them in the block range (to check
+# if there are any missed blocks that need reloading).
+
+SELECT ?b {
+  ?b a bp:Block.
+  BIND (xsd:integer(SUBSTR(STR(?b), 30)) AS ?bheight)
+  BIND (IRI(CONCAT("http://rodentrabies.btc/brdf#", STR(?bheight + 1))) AS ?bnext)
+  FILTER NOT EXISTS {
+    ?bnext a bp:Block.
+  }
+}
+```
 
 ### Types of transactions
 
@@ -152,7 +182,7 @@ SELECT ?tx ?icount ?ocount {
 ORDER BY ?icount
 ```
 
-* Temporary address transctions:
+* Temporary address transactions:
 
 ``` sparql
 # Temporary address transactions are transactions that send a bunch of outputs
