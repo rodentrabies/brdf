@@ -14,7 +14,7 @@
 
 (defpackage :brdf
   (:use :cl :bp :db.agraph)
-  (:import-from :bp/core/script
+  (:import-from :bp.core.script
                 #:*print-script-as-assembly*)
   (:import-from :db.agraph.triple-store-spec
                 #:parse-triple-store-specification
@@ -33,8 +33,13 @@
   (:import-from :db.agraph.http.store
                 #:@client)
   (:import-from :db.agraph.http.client
-                #:define-namespace)
-  (:export #:start-load
+                #:define-namespace
+                #:repository-data)
+  (:import-from :st-json
+                #:jso
+                #:write-json-to-string)
+  (:export #:prepare-repository
+           #:start-load
            #:stop-load
            #:*status-check-period*))
 
@@ -227,27 +232,43 @@ opened as REMOTE-TRIPLE-STORE."
                                      ,@args)
          ,@body))))
 
-(defun start-load (graph src dst &key workers from-height to-height)
-  (when *workers*
-    (error "Load process with ~a workers is already running." (length *workers*)))
-  ;; Perform clean setup if explicitly requested or repository does not exist.
+(defun prepare-repository (dst &optional queries-directory)
   ;; First create/open repository as remote one and make some things
   ;; persistent.
   (with-open-remote-triple-store (db dst :if-does-not-exist :create)
-    (define-namespace (@client db) "bp" +brdf-namespace+ :type :repository))
+    (let ((client (@client db)))
+      ;; Persistently set the main namespace.
+      (define-namespace client "bp" +brdf-namespace+ :type :repository)
+      ;; Add a bunch of useful saved queries.
+      (when queries-directory
+        (flet ((save-query (file)
+                 (let* ((name (pathname-name file))
+                        (query (excl:file-contents file))
+                        (saved-query (jso "title" name "query" query "language" "SPARQL")))
+                   (setf (repository-data client (format nil "wv.query.~a" name))
+                         (write-json-to-string saved-query))))
+               (query-file-p (file)
+                 (equal (pathname-type file) "rq")))
+          (excl:map-over-directory #'save-query queries-directory :filter #'query-file-p)))))
+  ;; Perform reinitialization *only* if no triples in the triple
+  ;; store. Shot myself in the foot too many times to expose the
+  ;; CLEANP argument.
+  (with-open-triple-store (db dst :if-does-not-exist :error)
+    (when (= (triple-count :db db) 0)
+      (drop-index :gposi)
+      (drop-index :gspoi)
+      (load-turtle +brdf-vocabulary+ :db db :commit t))))
+
+(defun start-load (graph src dst &key workers from-height to-height)
+  (when *workers*
+    (error "Load process with ~a workers is already running." (length *workers*)))
+  ;; Prepare repository for load.
+  (prepare-repository dst)
+  ;; Set local namespace abbreviation.
+  (register-namespace "bp" +brdf-namespace+)
   ;; Now open repository for operation.
   (with-open-triple-store (db dst :if-does-not-exist :error)
-    ;; Set local namespace abbreviation.
-    (register-namespace "bp" +brdf-namespace+)
     (let ((block-queue (make-instance 'mp:queue :name "BRDF block queue lock")))
-      ;; Perform reinitialization *only* if no triples in the triple
-      ;; store. Shot myself in the foot too many times to expose the
-      ;; CLEAP argument.
-      (when (= (triple-count :db db) 0)
-        (delete-triples :db db)
-        (drop-index :gposi)
-        (drop-index :gspoi)
-        (load-turtle +brdf-vocabulary+ :db db :commit t))
       ;; Print starting heights and number of workers.
       (format t "[~a] Starting load with ~a worker~p~%"
               (excl:universal-time-to-string (get-universal-time))
