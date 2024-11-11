@@ -1,0 +1,13 @@
+# Temporary address transactions are transactions that send a bunch of
+# outputs to a single address and then sent the whole amount to
+# another single address.
+
+SELECT ?tx1 ?tx2 ?icount1 {
+  ?tx1 bp:txInputCount ?icount1.
+  ?tx1 bp:txOutputCount ?ocount1.
+  FILTER (?icount1 > 5 && ?ocount1 = 1)
+  ?tx1 bp:txOutput/bp:outputInputTx ?tx2.
+  ?tx2 bp:txOutputCount ?ocount2.
+  FILTER (?ocount2 = 1)
+}
+ORDER BY ?icount1

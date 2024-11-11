@@ -1,0 +1,3 @@
+# Total number of block in the graph.
+
+SELECT (COUNT(?b) AS ?bcount) { ?b a bp:Block }

@@ -1,0 +1,14 @@
+# Check whether block range in the graph is contiguous (i.e. there are
+# no gaps).
+
+SELECT ?min ?max ?sum ?count ?expectedSum ?contiguous {
+  {
+    SELECT (MIN(?bheight) AS ?min) (MAX(?bheight) AS ?max) (SUM(?bheight) AS ?sum) (COUNT(?b) AS ?count)
+    {
+      ?b a bp:Block.
+      BIND(xsd:integer(SUBSTR(STR(?b), 30)) AS ?bheight)
+    }
+  }
+  BIND ((?max - ?min + 1)*(?min + ?max)/2 AS ?expectedSum)
+  BIND (?expectedSum = ?sum AS ?contiguous)
+}

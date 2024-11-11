@@ -1,0 +1,10 @@
+# Consolidation transactions are transactions that combine a bunch of
+# outputs belonging to a single entity into a small number of outputs
+# (usually a single one).
+
+SELECT ?tx ?icount ?ocount {
+  ?tx bp:txInputCount ?icount.
+  ?tx bp:txOutputCount ?ocount.
+  FILTER (?icount > 200 && ?ocount = 1)
+}
+ORDER BY ?icount

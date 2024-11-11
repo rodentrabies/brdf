@@ -1,0 +1,3 @@
+# Total number of transactions in the graph.
+
+SELECT (COUNT(?t) AS ?tcount) { ?t a bp:Tx }

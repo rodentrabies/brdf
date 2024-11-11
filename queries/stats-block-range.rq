@@ -1,0 +1,8 @@
+# Oldest and newest blocks present and the graph. Note the hacky way
+# to compute the length of the prefix to cut the block height substring.
+
+SELECT (MIN(?bheight) AS ?minblock) (MAX(?bheight) AS ?maxblock) {
+  ?b a bp:Block.
+  # BIND(xsd:integer(SUBSTR(STR(?b), STRLEN(STR(bp:Tx)) - 2)) AS ?bheight)
+  BIND(xsd:integer(SUBSTR(STR(?b), 30)) AS ?bheight)
+}
