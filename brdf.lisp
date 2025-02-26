@@ -51,7 +51,7 @@
 
 (defconstant +brdf-vocabulary+ (merge-pathnames "brdf.ttl" *load-truename*))
 
-(defconstant +brdf-namespace+ "http://rodentrabies.btc/brdf#")
+(defconstant +brdf-namespace+ "http://github.com/rodentrabies/brdf#")
 
 ;; Function that converts a Bitcoin block with hash `block-hash' at
 ;; height `block-height' into triples according to the model given by
