@@ -162,9 +162,11 @@
 
 (defmethod load-block ((graph (eql :transactions)) block-height block-hash)
   (let* ((block (decode 'cblock (get-block block-hash :encoded t)))
-         (block-resource (%r (format nil "~a" block-height))))
-    ;; Create block resouce.
+         (block-resource (%r (format nil "~a" block-height)))
+         (block-time (unix-to-date-time (block-timestamp block))))
+    ;; Create block resource.
     (add-triple block-resource +rdf-type-uri+ (%r "Block"))
+    (add-triple block-resource (%r "blockTime") (%l block-time :datetime))
     (loop :for tx-index :below (length (block-transactions block)) :do
       (let* ((tx (aref (block-transactions block) tx-index))
              (tx-resource (%r (tx-id tx)))
@@ -183,9 +185,13 @@
             (when (not (every #'zerop input-prevout-id))
               (let* ((input-prevout-id-hex (hex-encode (reverse input-prevout-id)))
                      (input-previous-output (format nil "~a:~a" input-prevout-id-hex input-prevout-index)))
-                ;; (unless (get-triple :s (%r input-previous-output) :p +rdf-type-uri+ :o (%r "Output"))
-                ;;   (add-triple (%r input-previous-output) +rdf-type-uri+ (%r "Output")))
-                (add-triple (%r input-previous-output) +rdf-type-uri+ (%r "Output"))
+                ;; Do not add output type for outputs referenced by inputs.
+                ;; They should already be described in the corresponding
+                ;; parent transaction and if not, then there's no amount anyway.
+                ;; This also avoids expensive GET-TRIPLES checks.
+                #+(or)
+                (unless (get-triple :s (%r input-previous-output) :p +rdf-type-uri+ :o (%r "Output"))
+                  (add-triple (%r input-previous-output) +rdf-type-uri+ (%r "Output")))
                 (add-triple (%r input-previous-output) (%r "outputInputTx") tx-resource)))))
         ;; Link transaction with outputs.
         (loop :for output-index :below tx-output-count :do
@@ -196,7 +202,7 @@
             (add-triple tx-resource (%r "txOutput") output-resource)
             (add-triple output-resource +rdf-type-uri+ (%r "Output"))
             (add-triple output-resource (%r "outputAmount") (%l output-amount :integer))
-            ;; Output type will be non-NIL only for standard scripts.
+            ;; Output address will be non-NIL only for standard scripts.
             (multiple-value-bind (_ output-address)
                 (script-standard-p (txout-script-pubkey output) :network (network))
               (declare (ignore _))
@@ -301,7 +307,7 @@ opened as REMOTE-TRIPLE-STORE."
       (with-open-triple-store (db dst :if-does-not-exist :error)
         (unwind-protect
              (with-chain-supplier (bprpc:node-rpc-connection :url src)
-               (with-buffered-triple-adds (db :limit 10000)
+               (with-buffered-triple-adds (db)
                  (load-blocks graph block-queue)))
           (rollback-triple-store :db db)))
     (stop-worker ())))
@@ -319,7 +325,7 @@ opened as REMOTE-TRIPLE-STORE."
               (go retry-block))
             (load-block graph block-height block-hash)))
        ;; Commit all the triples for current block and continue to the
-       ;; next one.
+       ;; next one. It will also flush the buffered triples.
        (commit-triple-store)))
 
 (defun loaded-blocks-table ()
