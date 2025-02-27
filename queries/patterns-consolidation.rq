@@ -2,6 +2,8 @@
 # outputs belonging to a single entity into a small number of outputs
 # (usually a single one).
 
+PREFIX bp: <http://github.com/rodentrabies/brdf#>
+
 SELECT ?tx ?icount ?ocount {
   ?tx bp:txInputCount ?icount.
   ?tx bp:txOutputCount ?ocount.

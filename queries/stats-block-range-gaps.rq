@@ -1,10 +1,12 @@
 # Return blocks that have a gap after them in the block range (to check
 # if there are any missed blocks that need reloading).
 
+PREFIX bp: <http://github.com/rodentrabies/brdf#>
+
 SELECT ?b {
   ?b a bp:Block.
-  BIND (xsd:integer(SUBSTR(STR(?b), 30)) AS ?bheight)
-  BIND (IRI(CONCAT("http://rodentrabies.btc/brdf#", STR(?bheight + 1))) AS ?bnext)
+  BIND (xsd:integer(SUBSTR(STR(?b), 37)) AS ?bheight)
+  BIND (IRI(CONCAT("http://github.com/rodentrabies/brdf#", STR(?bheight + 1))) AS ?bnext)
   FILTER NOT EXISTS {
     ?bnext a bp:Block.
   }

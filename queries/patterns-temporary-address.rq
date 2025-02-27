@@ -2,6 +2,8 @@
 # outputs to a single address and then sent the whole amount to
 # another single address.
 
+PREFIX bp: <http://github.com/rodentrabies/brdf#>
+
 SELECT ?tx1 ?tx2 ?icount1 {
   ?tx1 bp:txInputCount ?icount1.
   ?tx1 bp:txOutputCount ?ocount1.
