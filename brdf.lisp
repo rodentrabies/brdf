@@ -169,7 +169,8 @@
     (add-triple block-resource (%r "blockTime") (%l block-time :datetime))
     (loop :for tx-index :below (length (block-transactions block)) :do
       (let* ((tx (aref (block-transactions block) tx-index))
-             (tx-resource (%r (tx-id tx)))
+             (tx-id (tx-id tx))
+             (tx-resource (%r tx-id))
              (tx-input-count (length (tx-inputs tx)))
              (tx-output-count (length (tx-outputs tx))))
         ;; Create transaction resource.
@@ -183,31 +184,28 @@
                  (input-prevout-id (txin-previous-tx-id input))
                  (input-prevout-index (txin-previous-tx-index input)))
             (when (not (every #'zerop input-prevout-id))
+              ;; We expect outputs to be described by their generating transactions,
+              ;; so only a link here.
               (let* ((input-prevout-id-hex (hex-encode (reverse input-prevout-id)))
                      (input-previous-output (format nil "~a:~a" input-prevout-id-hex input-prevout-index)))
-                ;; Do not add output type for outputs referenced by inputs.
-                ;; They should already be described in the corresponding
-                ;; parent transaction and if not, then there's no amount anyway.
-                ;; This also avoids expensive GET-TRIPLES checks.
-                #+(or)
-                (unless (get-triple :s (%r input-previous-output) :p +rdf-type-uri+ :o (%r "Output"))
-                  (add-triple (%r input-previous-output) +rdf-type-uri+ (%r "Output")))
                 (add-triple (%r input-previous-output) (%r "outputInputTx") tx-resource)))))
         ;; Link transaction with outputs.
         (loop :for output-index :below tx-output-count :do
           (let* ((output (aref (tx-outputs tx) output-index))
                  (output-amount (txout-amount output))
-                 (output-resource (%r (format nil "~a:~a" (tx-id tx) output-index))))
+                 (output-script (txout-script-pubkey output))
+                 (output-resource (%r (format nil "~a:~a" tx-id output-index))))
             ;; Link output with the transaction.
             (add-triple tx-resource (%r "txOutput") output-resource)
             (add-triple output-resource +rdf-type-uri+ (%r "Output"))
             (add-triple output-resource (%r "outputAmount") (%l output-amount :integer))
             ;; Output address will be non-NIL only for standard scripts.
             (multiple-value-bind (_ output-address)
-                (script-standard-p (txout-script-pubkey output) :network (network))
+                (script-standard-p output-script :network (network))
               (declare (ignore _))
-              (when output-address
-                (add-triple output-resource (%r "outputAddress") (%l output-address :string))))))))))
+              (if output-address
+                  (add-triple output-resource (%r "outputAddress") (%l output-address :string))
+                  (add-triple output-resource (%r "outputScript") (%l output-script :string))))))))))
 
 
 ;;; ----------------------------------------------------------------------------
