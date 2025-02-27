@@ -49,7 +49,14 @@
 ;;; ----------------------------------------------------------------------------
 ;;; Model
 
-(defconstant +brdf-vocabulary+ (merge-pathnames "brdf.ttl" *load-truename*))
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defun source-relative-pathname (path)
+    (let ((defaults (or *load-truename* *default-pathname-defaults*)))
+      (merge-pathnames path (make-pathname :name nil :type nil :defaults defaults)))))
+
+(defconstant +brdf-schema+ (source-relative-pathname "brdf.ttl"))
+
+(defconstant +brdf-queries+ (source-relative-pathname "queries/"))
 
 (defconstant +brdf-namespace+ "http://github.com/rodentrabies/brdf#")
 
@@ -233,18 +240,27 @@ opened as REMOTE-TRIPLE-STORE."
                                      :user (ground-store-address-user ,parsed-spec)
                                      :password (ground-store-address-password ,parsed-spec)
                                      :catalog (ground-store-address-catalog ,parsed-spec)
+                                     :expected-size     1000000000 ;; 1B
+                                     :string-table-size  512000000 ;; 512M
                                      ,@args)
          ,@body))))
 
-(defun prepare-repository (dst &optional queries-directory)
-  ;; First create/open repository as remote one and make some things
-  ;; persistent.
+(defun prepare-repository (dst &key include-schema-p include-queries-p)
   (with-open-remote-triple-store (db dst :if-does-not-exist :create)
+    ;; Perform reinitialization *only* if no triples in the triple
+    ;; store.
+    (when (= (triple-count :db db) 0)
+      (drop-index :gposi :db db)
+      (drop-index :gspoi :db db))
+    ;; Only add schema triples if explicitly asked.
+    (when include-schema-p
+      (load-turtle +brdf-schema+ :db db))
+    ;; These require HTTP API access hence the forced remote triple store.
     (let ((client (@client db)))
       ;; Persistently set the main namespace.
       (define-namespace client "bp" +brdf-namespace+ :type :repository)
       ;; Add a bunch of useful saved queries.
-      (when queries-directory
+      (when include-queries-p
         (flet ((save-query (file)
                  (let* ((name (pathname-name file))
                         (query (excl:file-contents file))
@@ -253,21 +269,15 @@ opened as REMOTE-TRIPLE-STORE."
                          (write-json-to-string saved-query))))
                (query-file-p (file)
                  (equal (pathname-type file) "rq")))
-          (excl:map-over-directory #'save-query queries-directory :filter #'query-file-p)))))
-  ;; Perform reinitialization *only* if no triples in the triple
-  ;; store. Shot myself in the foot too many times to expose the
-  ;; CLEANP argument.
-  (with-open-triple-store (db dst :if-does-not-exist :error)
-    (when (= (triple-count :db db) 0)
-      (drop-index :gposi)
-      (drop-index :gspoi)
-      (load-turtle +brdf-vocabulary+ :db db :commit t))))
+          (excl:map-over-directory #'save-query +brdf-queries+ :filter #'query-file-p))))
+    ;; Commit and close remote triple store interface.
+    (commit-triple-store :db db)))
 
 (defun start-load (graph src dst &key workers from-height to-height)
   (when *workers*
     (error "Load process with ~a workers is already running." (length *workers*)))
   ;; Prepare repository for load.
-  (prepare-repository dst)
+  (prepare-repository dst :include-schema-p nil :include-queries-p t)
   ;; Set local namespace abbreviation.
   (register-namespace "bp" +brdf-namespace+)
   ;; Now open repository for operation.
