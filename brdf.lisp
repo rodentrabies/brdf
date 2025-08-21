@@ -348,15 +348,13 @@ opened as REMOTE-TRIPLE-STORE."
   (with-open-triple-store (db dst :if-does-not-exist :error)
     (let* ((node-connection (make-instance 'bprpc:node-rpc-connection :url src))
            (initial-chain-stats (bprpc:getchaintxstats node-connection))
-           (highest-known-block (jsown:val initial-chain-stats "window_final_block_height"))
+           (best-height (jsown:val initial-chain-stats "window_final_block_height"))
            (loaded-blocks-table (loaded-blocks-table))
-           (max-height to-height)
            (from-height (or from-height 0))
-           (to-height (or to-height highest-known-block))
            (initially-enqueued-blocks 0))
       ;; Populate the block queue with all blocks in the specified
       ;; range unless they are already in the DB.
-      (loop :for i :from from-height :to to-height
+      (loop :for i :from from-height :to (or to-height best-height)
             :do (unless (gethash i loaded-blocks-table)
                   (incf initially-enqueued-blocks)
                   (mp:enqueue block-queue i)))
@@ -367,29 +365,32 @@ opened as REMOTE-TRIPLE-STORE."
       (handler-case
           (loop
             (let* ((chain-stats (bprpc:getchaintxstats node-connection))
-                   (chain-blocks (jsown:val chain-stats "window_final_block_height"))
-                   (chain-txs (jsown:val chain-stats "txcount"))
-                   (blocks (sparql:run-sparql "SELECT DISTINCT ?b { ?b a bp:Block }"
-                                              :output-format :count))
-                   (txs (sparql:run-sparql "SELECT DISTINCT ?b { ?b a bp:Tx }"
-                                           :output-format :count))
-                   (progress (/ txs chain-txs)))
-              (when (> chain-blocks highest-known-block)
+                   (new-best-height (jsown:val chain-stats "window_final_block_height"))
+                   (txcount (jsown:val chain-stats "txcount"))
+                   (graph-blocks (sparql:run-sparql "SELECT DISTINCT ?b { ?b a bp:Block }"
+                                                    :output-format :count))
+                   (graph-txs (sparql:run-sparql "SELECT DISTINCT ?b { ?b a bp:Tx }"
+                                                 :output-format :count))
+                   (progress (/ graph-txs txcount)))
+              ;; Enqueue new blocks if needed.
+              (when (> new-best-height best-height)
                 (loop
-                  :for i :from (1+ highest-known-block) :to chain-blocks
-                  :if (or (null max-height) (<= i max-height))
-                    :do (mp:enqueue block-queue i))
-                (let ((new-blocks (- chain-blocks highest-known-block)))
-                  (format t "[~a] Adding ~a block~p to the queue~%"
-                          (excl:universal-time-to-string (get-universal-time))
-                          new-blocks
-                          new-blocks))
-                (setf highest-known-block chain-blocks))
-              (when (> highest-known-block to-height)
-                (loop :repeat workers :do (mp:enqueue block-queue nil)))
+                  :for i :from (1+ best-height) :to (or to-height new-best-height)
+                  :do (format t "[~a] Adding block ~a to the queue~%"
+                        (excl:universal-time-to-string (get-universal-time))
+                        i)
+                      (mp:enqueue block-queue i))
+                (setf best-height new-best-height)
+                (when (and to-height (> best-height to-height))
+                  (loop :repeat workers
+                        :do (mp:enqueue block-queue nil))))
               (format t "[~a] Blocks: ~a/~a, txs: ~a/~a, progress: ~5$~%"
                       (excl:universal-time-to-string (get-universal-time))
-                      blocks chain-blocks txs chain-txs progress)
+                      graph-blocks
+                      best-height
+                      graph-txs
+                      txcount
+                      progress)
               (sleep *status-check-period*)
               (rollback-triple-store)))
         (stop-worker ())))))
