@@ -20,6 +20,8 @@
   ("db.agraph"
    "aserve"
    "jsown"
-   "brdf/etl"))
+   "brdf/etl"
+   "brdf/explorer"))
 
-(register-system-packages "brdf/etl" '(:brdf.etl))
+(register-system-packages "brdf/etl"      '(:brdf.etl))
+(register-system-packages "brdf/explorer" '(:brdf.explorer))
