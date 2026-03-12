@@ -283,11 +283,6 @@ opened as REMOTE-TRIPLE-STORE."
   ;; Now open repository for operation.
   (with-open-triple-store (db dst :if-does-not-exist :error)
     (let ((block-queue (make-instance 'mp:queue :name "BRDF block queue lock")))
-      ;; Print starting heights and number of workers.
-      (format t "[~a] Starting load with ~a worker~p~%"
-              (excl:universal-time-to-string (get-universal-time))
-              workers
-              workers)
       ;; Start planner/status thread.
       (push (mp:process-run-function
              "BRDF planner"
@@ -334,7 +329,8 @@ opened as REMOTE-TRIPLE-STORE."
             (load-block graph block-height block-hash)))
        ;; Commit all the triples for current block and continue to the
        ;; next one. It will also flush the buffered triples.
-       (commit-triple-store)))
+       (commit-triple-store)
+    :finally (format t "[~a] worker exited~%" (excl:universal-time-to-string (get-universal-time)))))
 
 (defun loaded-blocks-table ()
   (let ((table (make-hash-table :test '=)))
@@ -351,7 +347,12 @@ opened as REMOTE-TRIPLE-STORE."
            (best-height (jsown:val initial-chain-stats "window_final_block_height"))
            (loaded-blocks-table (loaded-blocks-table))
            (from-height (or from-height 0))
-           (initially-enqueued-blocks 0))
+           (initially-enqueued-blocks 0)
+           (done-p nil))
+      (format t "[~a] Load started with ~a worker~p~%"
+              (excl:universal-time-to-string (get-universal-time))
+              workers
+              workers)
       ;; Populate the block queue with all blocks in the specified
       ;; range unless they are already in the DB.
       (loop :for i :from from-height :to (or to-height best-height)
@@ -380,10 +381,7 @@ opened as REMOTE-TRIPLE-STORE."
                         (excl:universal-time-to-string (get-universal-time))
                         i)
                       (mp:enqueue block-queue i))
-                (setf best-height new-best-height)
-                (when (and to-height (> best-height to-height))
-                  (loop :repeat workers
-                        :do (mp:enqueue block-queue nil))))
+                (setf best-height new-best-height))
               (format t "[~a] Blocks: ~a/~a, txs: ~a/~a, progress: ~5$~%"
                       (excl:universal-time-to-string (get-universal-time))
                       graph-blocks
@@ -391,6 +389,16 @@ opened as REMOTE-TRIPLE-STORE."
                       graph-txs
                       txcount
                       progress)
+              (when (and to-height (> best-height to-height))
+                ;; Enqueue worker exit markers, but only exit planner
+                ;; when the queue is empty (all workers exited).
+                (unless done-p
+                  (loop :repeat workers :do (mp:enqueue block-queue nil))
+                  (setf done-p t))
+                (when (and done-p (mp:queue-empty-p block-queue))
+                  (format t "[~a] Load finished~%"
+                          (excl:universal-time-to-string (get-universal-time)))
+                  (return)))
               (sleep *status-check-period*)
               (rollback-triple-store)))
         (stop-worker ())))))
