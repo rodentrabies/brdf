@@ -4,15 +4,8 @@
 #-allegro
 (error "Direct AllegroGraph interface only works in AllegroCL.")
 
-;; Load `agraph.fasl' dependency unless it's already present.
-#-allegrograph
-(load "agraph.fasl")
-
-;; Finally, load external dependencies `jsown' and `bp' using Quicklisp.
-(ql:quickload "jsown")
-(ql:quickload "bp")
-
-(defpackage :brdf
+(uiop:define-package #:brdf.etl
+  (:nicknames #:brdf/etl)
   (:use :cl :bp :db.agraph)
   (:import-from :bp.core.script
                 #:*print-script-as-assembly*)
@@ -43,7 +36,7 @@
            #:stop-load
            #:*status-check-period*))
 
-(in-package :brdf)
+(in-package #:brdf.etl)
 
 
 ;;; ----------------------------------------------------------------------------
@@ -410,11 +403,11 @@ opened as REMOTE-TRIPLE-STORE."
 #+test
 ;; On first invocation, choose the number of workers that will utilize
 ;; the underlying machine to the optimum.
-(brdf:start-load :chain
-                 "http://user:password@127.0.0.1:8332"
-                 "http://user:password@127.0.0.1:10035/repositories/brdf"
-                 :workers 4)
+(brdf.etl:start-load :chain
+                     "http://user:password@127.0.0.1:8332"
+                     "http://user:password@127.0.0.1:10035/repositories/brdf"
+                     :workers 4)
 
 #+test
 ;; In order to stop the load, do:
-(brdf:stop-load)
+(brdf.etl:stop-load)

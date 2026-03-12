@@ -9,8 +9,7 @@ AllegroGraph, which is written in Common Lisp and provides a
 high-performance direct Common Lisp interface.
 
 Note that direct Common Lisp AllegroGraph interface only works on
-AllegroCL, so the same limitation applies to the CL source code in
-this example (`brdf.lisp`).
+AllegroCL, so the same limitation applies to this project.
 
 This is an extension of the example [here][agraph-examples] that was
 originally written in Python.
@@ -41,7 +40,7 @@ This tool will eventually support several types of Bitcoin data
 graphs, but currently only one is available:
   - `chain` - a complete representation of Bitcoin time chain.
 
-Graph is the the first argument to the function `brdf:start-load`,
+Graph is the the first argument to the function `brdf.etl:start-load`,
 described below.
 
 
@@ -51,10 +50,10 @@ described below.
 In order to start the loader, run
 
 ``` lisp
-(brdf:start-load :chain
-                 "http://user:password@127.0.0.1:8332"
-                 "http://user:password@127.0.0.1:10035/repositories/brdf"
-                 :workers 4)
+(brdf.etl:start-load :chain
+                     "http://user:password@127.0.0.1:8332"
+                     "http://user:password@127.0.0.1:10035/repositories/brdf"
+                     :workers 4)
 ```
 
 You should see a loader log that looks similar to this:
@@ -69,7 +68,7 @@ You should see a loader log that looks similar to this:
 In order to stop the loader, run
 
 ``` lisp
-(brdf:stop-load)
+(brdf.etl:stop-load)
 ```
 
 Once the function call above returns, all the workers have been
@@ -79,10 +78,10 @@ In order to continue the load, run the same form but make sure the
 value of `cleanp` argument is `nil`:
 
 ``` lisp
-(brdf:start-load :chain
-                 "http://user:password@127.0.0.1:8332"
-                 "http://user:password@127.0.0.1:10035/repositories/brdf"
-                 :workers 4)
+(brdf.etl:start-load :chain
+                     "http://user:password@127.0.0.1:8332"
+                     "http://user:password@127.0.0.1:10035/repositories/brdf"
+                     :workers 4)
 ```
 
 By default, the status of the load will be checked every 10
@@ -90,7 +89,7 @@ seconds. As the load continues, it might make sense to change the
 status check period to a larger value (e.g. 1 hour) by evaluating
 
 ``` lisp
-(setf brdf:*status-check-period* 3600)
+(setf brdf.etl:*status-check-period* 3600)
 ```
 
 since it is expected to take anywhere from several days to several
