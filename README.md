@@ -36,12 +36,13 @@ downloaded from the same place as the AllegroGraph server.
 
 ## Supported graph types
 
+The first argument to the function `brdf.etl:start` is graph type.
 This tool will eventually support several types of Bitcoin data
 graphs, but currently only one is available:
-  - `chain` - a complete representation of Bitcoin time chain.
-
-Graph is the the first argument to the function `brdf.etl:start`,
-described below.
+  - `transactions` - a Tx/Output graph, which is intended as the main
+    way of using this tool;
+  - `chain` - a complete legacy representation of Bitcoin time chain
+    (very redundant).
 
 
 
@@ -94,3 +95,29 @@ status check period to a larger value (e.g. 1 hour) by evaluating
 
 since it is expected to take anywhere from several days to several
 weeks on an average home machine.
+
+
+
+## Running the explorer
+
+With some data loaded into a triple store, you start the transaction
+graph explorer UI by running
+
+``` lisp
+(brdf.explorer:start "http://user:password@127.0.0.1:10035/repositories/brdf")
+```
+
+This starts an HTTP server on a default port 6102. Open
+http://localhost:6102/ in a browser to use the explorer.
+
+An optional `:port` keyword argument overrides the default port:
+
+``` lisp
+(brdf.explorer:start "http://user:password@127.0.0.1:10035/repositories/brdf" :port 16102)
+```
+
+To stop the server, run
+
+``` lisp
+(brdf.explorer:stop)
+```
