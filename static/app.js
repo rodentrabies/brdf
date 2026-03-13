@@ -1,19 +1,19 @@
-// BRDF Explorer - D3 v7 force-directed transaction graph
+// BRDF Explorer - transaction graph visualizer
 
-(function () {
-  'use strict';
+import * as d3 from 'https://esm.sh/d3@7';
+import dagre from 'https://cdn.jsdelivr.net/npm/@dagrejs/dagre/dist/dagre.esm.js';
 
-  let graphData = { nodes: [], edges: [] };
+let graphData = { nodes: [], edges: [] };
   const expandedSet  = new Set();
   // Maps txid → { nodeIds: Set<string> } — nodes introduced by each expansion.
   const expansionMap = new Map();
 
-  const statusEl   = document.getElementById('status');
+  const statusEl    = document.getElementById('status');
   const searchInput = document.getElementById('search-input');
   const searchBtn   = document.getElementById('search-btn');
-  const clearBtn   = document.getElementById('clear-btn');
-  const randomBtn  = document.getElementById('random-btn');
-  const tooltipEl  = document.getElementById('tooltip');
+  const clearBtn    = document.getElementById('clear-btn');
+  const randomBtn   = document.getElementById('random-btn');
+  const tooltipEl   = document.getElementById('tooltip');
 
   const svg       = d3.select('#graph');
   const zoomLayer = svg.select('#zoom-layer');
@@ -24,20 +24,6 @@
     .scaleExtent([0.05, 10])
     .on('zoom', (event) => zoomLayer.attr('transform', event.transform));
   svg.call(zoom);
-
-  const simulation = d3.forceSimulation()
-    .force('link',   d3.forceLink().id(d => d.id).distance(60))
-    .force('charge', d3.forceManyBody().strength(d => d.type === 'output' ? -80 : -300))
-    .force('center', d3.forceCenter(
-      window.innerWidth / 2,
-      (window.innerHeight - 48) / 2
-    ))
-    .force('collision', d3.forceCollide().radius(d => nodeRadius(d) + 3));
-
-  window.addEventListener('resize', () => {
-    simulation.force('center',
-      d3.forceCenter(window.innerWidth / 2, (window.innerHeight - 48) / 2));
-  });
 
   function nodeRadius(d) {
     if (d.type === 'output') return 5;
@@ -68,43 +54,60 @@
   }
 
   function edgeKey(e) {
-    const src = (e.source && e.source.id) ? e.source.id : e.source;
-    const tgt = (e.target && e.target.id) ? e.target.id : e.target;
+    const src = (typeof e.source === 'object') ? e.source.id : e.source;
+    const tgt = (typeof e.target === 'object') ? e.target.id : e.target;
     return `${src}->${tgt}`;
   }
 
-  // Merges newData into graphData, updating existing nodes in place.
-  function mergeGraph(newData) {
-    const prevNodeIds  = new Set(graphData.nodes.map(n => n.id));
-    const prevEdgeKeys = new Set(graphData.edges.map(edgeKey));
+  function nodeById(id) {
+    return graphData.nodes.find(n => n.id === id);
+  }
 
-    (newData.nodes || []).forEach(n => {
-      if (!prevNodeIds.has(n.id)) {
-        graphData.nodes.push(n);
-        prevNodeIds.add(n.id);
-      } else {
-        const existing = graphData.nodes.find(x => x.id === n.id);
-        if (existing) {
-          if (n.type        !== undefined) existing.type        = n.type;
-          if (n.inputCount  !== undefined) existing.inputCount  = n.inputCount;
-          if (n.outputCount !== undefined) existing.outputCount = n.outputCount;
-          if (n.totalOutput !== undefined) existing.totalOutput = n.totalOutput;
-          if (n.amount      !== undefined) existing.amount      = n.amount;
-          if (n.address     !== undefined) existing.address     = n.address;
-        }
-      }
+  function applyLayout() {
+    const g = new dagre.graphlib.Graph({ multigraph: true });
+    g.setGraph({ rankdir: 'LR', nodesep: 20, ranksep: 60, marginx: 40, marginy: 40 });
+    g.setDefaultEdgeLabel(() => ({}));
+
+    graphData.nodes.forEach(n => {
+      const r = nodeRadius(n);
+      g.setNode(n.id, { width: r * 2, height: r * 2 });
     });
 
-    (newData.edges || []).forEach(e => {
-      const k = edgeKey(e);
-      if (!prevEdgeKeys.has(k)) {
-        graphData.edges.push(e);
-        prevEdgeKeys.add(k);
-      }
+    graphData.edges.forEach((e, i) => {
+      const src = (typeof e.source === 'object') ? e.source.id : e.source;
+      const tgt = (typeof e.target === 'object') ? e.target.id : e.target;
+      if (g.hasNode(src) && g.hasNode(tgt)) g.setEdge(src, tgt, {}, String(i));
+    });
+
+    dagre.layout(g);
+
+    graphData.nodes.forEach(n => {
+      const pos = g.node(n.id);
+      if (pos) { n.x = pos.x; n.y = pos.y; }
     });
   }
 
+  function drawEdgePath(e) {
+    const srcId = (typeof e.source === 'object') ? e.source.id : e.source;
+    const tgtId = (typeof e.target === 'object') ? e.target.id : e.target;
+    const src = nodeById(srcId);
+    const tgt = nodeById(tgtId);
+    if (!src || !tgt) return '';
+    const dx = tgt.x - src.x;
+    const dy = tgt.y - src.y;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len === 0) return '';
+    const sx = src.x + (dx / len) * nodeRadius(src);
+    const sy = src.y + (dy / len) * nodeRadius(src);
+    const tx = tgt.x - (dx / len) * nodeRadius(tgt);
+    const ty = tgt.y - (dy / len) * nodeRadius(tgt);
+    const dr = len * 1.5;
+    return `M${sx},${sy}A${dr},${dr} 0 0,1 ${tx},${ty}`;
+  }
+
   function render() {
+    applyLayout();
+
     const link = linksG.selectAll('.link')
       .data(graphData.edges, edgeKey)
       .join(
@@ -113,7 +116,8 @@
           .attr('marker-end', 'url(#arrowhead)'),
         update => update,
         exit => exit.remove()
-      );
+      )
+      .attr('d', drawEdgePath);
 
     const node = nodesG.selectAll('.node')
       .data(graphData.nodes, d => d.id)
@@ -147,35 +151,49 @@
       .style('cursor', d => d.type === 'tx' ? 'pointer' : 'default');
 
     node.select('text').text(nodeLabel);
+    node.attr('transform', d => `translate(${d.x},${d.y})`);
+  }
 
-    simulation.nodes(graphData.nodes);
-    simulation.force('link').links(graphData.edges);
+  function dragStart(event, d) { d._dragX = d.x; d._dragY = d.y; }
 
-    simulation.on('tick', () => {
-      link.attr('d', d => {
-        const dx = d.target.x - d.source.x;
-        const dy = d.target.y - d.source.y;
-        const len = Math.sqrt(dx * dx + dy * dy);
-        if (len === 0) return '';
-        const sx = d.source.x + (dx / len) * nodeRadius(d.source);
-        const sy = d.source.y + (dy / len) * nodeRadius(d.source);
-        const tx = d.target.x - (dx / len) * nodeRadius(d.target);
-        const ty = d.target.y - (dy / len) * nodeRadius(d.target);
-        const dr = len * 1.5;
-        return `M${sx},${sy}A${dr},${dr} 0 0,1 ${tx},${ty}`;
-      });
-      node.attr('transform', d => `translate(${d.x},${d.y})`);
+  function dragged(event, d) {
+    d.x = event.x;
+    d.y = event.y;
+    nodesG.selectAll('.node').attr('transform', n => `translate(${n.x},${n.y})`);
+    linksG.selectAll('.link').attr('d', drawEdgePath);
+  }
+
+  function dragEnd(event, d) { delete d._dragX; delete d._dragY; }
+
+  // Merges newData into graphData, updating existing nodes in place.
+  function mergeGraph(newData) {
+    const prevNodeIds  = new Set(graphData.nodes.map(n => n.id));
+    const prevEdgeKeys = new Set(graphData.edges.map(edgeKey));
+
+    (newData.nodes || []).forEach(n => {
+      if (!prevNodeIds.has(n.id)) {
+        graphData.nodes.push(n);
+        prevNodeIds.add(n.id);
+      } else {
+        const existing = graphData.nodes.find(x => x.id === n.id);
+        if (existing) {
+          if (n.type        !== undefined) existing.type        = n.type;
+          if (n.inputCount  !== undefined) existing.inputCount  = n.inputCount;
+          if (n.outputCount !== undefined) existing.outputCount = n.outputCount;
+          if (n.totalOutput !== undefined) existing.totalOutput = n.totalOutput;
+          if (n.amount      !== undefined) existing.amount      = n.amount;
+          if (n.address     !== undefined) existing.address     = n.address;
+        }
+      }
     });
-  }
 
-  function dragStart(event, d) {
-    if (!event.active) simulation.alphaTarget(0.3).restart();
-    d.fx = d.x; d.fy = d.y;
-  }
-  function dragged(event, d) { d.fx = event.x; d.fy = event.y; }
-  function dragEnd(event, d) {
-    if (!event.active) simulation.alphaTarget(0);
-    d.fx = null; d.fy = null;
+    (newData.edges || []).forEach(e => {
+      const k = edgeKey(e);
+      if (!prevEdgeKeys.has(k)) {
+        graphData.edges.push(e);
+        prevEdgeKeys.add(k);
+      }
+    });
   }
 
   let tooltipHideTimer = null;
@@ -239,7 +257,6 @@
       expansionMap.set(txid, { nodeIds: addedNodeIds });
 
       render();
-      simulation.alpha(0.3).restart();
       setStatus(`Expanded tx ${txid} - ${data.nodes.length} nodes, ${data.edges.length} edges`);
     } catch (err) {
       setStatus(`Error expanding tx: ${err.message}`, 'error');
@@ -253,7 +270,6 @@
     expansionMap.delete(txid);
     expandedSet.delete(txid);
 
-    // Collect node ids still claimed by other expansions
     const claimedByOthers = new Set();
     for (const { nodeIds } of expansionMap.values()) {
       for (const id of nodeIds) claimedByOthers.add(id);
@@ -261,20 +277,18 @@
     graphData.nodes.forEach(n => {
       if (expandedSet.has(n.id)) claimedByOthers.add(n.id);
     });
-    // Always keep the collapsed tx node itself
     claimedByOthers.add(txid);
 
     const toRemove = new Set([...expansion.nodeIds].filter(id => !claimedByOthers.has(id)));
 
     graphData.nodes = graphData.nodes.filter(n => !toRemove.has(n.id));
     graphData.edges = graphData.edges.filter(e => {
-      const src = (e.source && e.source.id) ? e.source.id : e.source;
-      const tgt = (e.target && e.target.id) ? e.target.id : e.target;
+      const src = (typeof e.source === 'object') ? e.source.id : e.source;
+      const tgt = (typeof e.target === 'object') ? e.target.id : e.target;
       return !toRemove.has(src) && !toRemove.has(tgt);
     });
 
     render();
-    simulation.alpha(0.3).restart();
     setStatus(`Collapsed tx ${txid}`);
   }
 
@@ -286,7 +300,6 @@
       const data = await resp.json();
       mergeGraph(data);
       render();
-      simulation.alpha(0.8).restart();
       setStatus(`Block ${height}: ${data.nodes.length} nodes loaded`);
     } catch (err) {
       setStatus(`Error loading block: ${err.message}`, 'error');
@@ -311,9 +324,6 @@
     expansionMap.clear();
     linksG.selectAll('.link').remove();
     nodesG.selectAll('.node').remove();
-    simulation.nodes([]);
-    simulation.force('link').links([]);
-    simulation.alpha(0.1).restart();
   }
 
   function search() {
@@ -342,4 +352,3 @@
   svg.on('click', () => hideTooltip());
 
   loadRandomTx();
-})();
