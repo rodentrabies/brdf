@@ -31,9 +31,9 @@
   (:import-from :st-json
                 #:jso
                 #:write-json-to-string)
-  (:export #:prepare-repository
-           #:start-load
-           #:stop-load
+  (:export #:start
+           #:stop
+           #:prepare-repository
            #:*status-check-period*))
 
 (in-package #:brdf.etl)
@@ -266,7 +266,7 @@ opened as REMOTE-TRIPLE-STORE."
     ;; Commit and close remote triple store interface.
     (commit-triple-store :db db)))
 
-(defun start-load (graph src dst &key workers from-height to-height)
+(defun start (graph src dst &key workers from-height to-height)
   (when *workers*
     (error "Load process with ~a workers is already running." (length *workers*)))
   ;; Prepare repository for load.
@@ -290,7 +290,7 @@ opened as REMOTE-TRIPLE-STORE."
                graph src dst block-queue)
               *workers*)))))
 
-(defun stop-load ()
+(defun stop ()
   (dolist (worker *workers*)
     (ignore-errors
      (mp:process-interrupt worker (lambda () (signal 'stop-worker))))
@@ -403,11 +403,11 @@ opened as REMOTE-TRIPLE-STORE."
 #+test
 ;; On first invocation, choose the number of workers that will utilize
 ;; the underlying machine to the optimum.
-(brdf.etl:start-load :chain
-                     "http://user:password@127.0.0.1:8332"
-                     "http://user:password@127.0.0.1:10035/repositories/brdf"
-                     :workers 4)
+(brdf.etl:start :transactions
+                "http://user:password@127.0.0.1:8332"
+                "http://user:password@127.0.0.1:10035/repositories/brdf"
+                :workers 4)
 
 #+test
 ;; In order to stop the load, do:
-(brdf.etl:stop-load)
+(brdf.etl:stop)

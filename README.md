@@ -40,7 +40,7 @@ This tool will eventually support several types of Bitcoin data
 graphs, but currently only one is available:
   - `chain` - a complete representation of Bitcoin time chain.
 
-Graph is the the first argument to the function `brdf.etl:start-load`,
+Graph is the the first argument to the function `brdf.etl:start`,
 described below.
 
 
@@ -50,10 +50,10 @@ described below.
 In order to start the loader, run
 
 ``` lisp
-(brdf.etl:start-load :chain
-                     "http://user:password@127.0.0.1:8332"
-                     "http://user:password@127.0.0.1:10035/repositories/brdf"
-                     :workers 4)
+(brdf.etl:start :transactions
+                "http://user:password@127.0.0.1:8332"
+                "http://user:password@127.0.0.1:10035/repositories/brdf"
+                :workers 4)
 ```
 
 You should see a loader log that looks similar to this:
@@ -68,7 +68,7 @@ You should see a loader log that looks similar to this:
 In order to stop the loader, run
 
 ``` lisp
-(brdf.etl:stop-load)
+(brdf.etl:stop)
 ```
 
 Once the function call above returns, all the workers have been
@@ -78,10 +78,10 @@ In order to continue the load, run the same form but make sure the
 value of `cleanp` argument is `nil`:
 
 ``` lisp
-(brdf.etl:start-load :chain
-                     "http://user:password@127.0.0.1:8332"
-                     "http://user:password@127.0.0.1:10035/repositories/brdf"
-                     :workers 4)
+(brdf.etl:start :transactions
+                "http://user:password@127.0.0.1:8332"
+                "http://user:password@127.0.0.1:10035/repositories/brdf"
+                :workers 4)
 ```
 
 By default, the status of the load will be checked every 10
