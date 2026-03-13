@@ -87,6 +87,25 @@ let graphData = { nodes: [], edges: [] };
     });
   }
 
+  function fitView() {
+    if (graphData.nodes.length === 0) return;
+    const svgEl = svg.node();
+    const w = svgEl.clientWidth;
+    const h = svgEl.clientHeight;
+    const xs = graphData.nodes.map(n => n.x);
+    const ys = graphData.nodes.map(n => n.y);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+    const graphW = maxX - minX || 1;
+    const graphH = maxY - minY || 1;
+    const scale = Math.min(w / (graphW + 120), h / (graphH + 120), 1);
+    const tx = w / 2 - (minX + graphW / 2) * scale;
+    const ty = h / 2 - (minY + graphH / 2) * scale;
+    svg.call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
+  }
+
   function drawEdgePath(e) {
     const srcId = (typeof e.source === 'object') ? e.source.id : e.source;
     const tgtId = (typeof e.target === 'object') ? e.target.id : e.target;
@@ -313,6 +332,7 @@ let graphData = { nodes: [], edges: [] };
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const { txid } = await resp.json();
       await expandNode(txid);
+      fitView();
     } catch (err) {
       setStatus(`Could not load random tx: ${err.message}`, 'error');
     }
@@ -331,7 +351,7 @@ let graphData = { nodes: [], edges: [] };
     if (!val) { setStatus('Enter a txid or block height.', 'error'); return; }
     if (/^[0-9a-fA-F]{64}$/.test(val)) {
       clearGraph();
-      expandNode(val);
+      expandNode(val).then(fitView);
     } else if (/^\d+$/.test(val)) {
       loadBlock(parseInt(val, 10));
     } else {
